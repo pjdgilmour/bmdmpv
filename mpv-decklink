@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+base=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ "${1:-}" = '--list-modes' ]; then
+    exec "$base/build/decklink-probe"
+fi
+exec "$base/build-mpv/mpv" --no-config --vo=decklink --ao=decklink --hwdec=no "$@"

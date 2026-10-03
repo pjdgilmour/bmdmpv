@@ -1,0 +1,5 @@
+/.deps/
+/build/
+/build-*/
+/test-results/
+__pycache__/

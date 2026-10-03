@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Bash completion for the launcher; requires bash-completion.
+_bmdmpv()
+{
+    local cur prev words cword split
+    _init_completion -s || return
+    local executable=${words[0]} options doc candidates option
+    COMPREPLY=()
+
+    # Query the invoked build, not /usr/bin/mpv. Do not cache across builds.
+    options=$("$executable" --no-config --list-options 2>/dev/null) || return
+
+    if [[ $cur == -* && $split == false ]]; then
+        candidates=$(awk '
+            $1 ~ /^--/ && !/removed \[deprecated\]/ {
+                if ($2 == "Print" || ($2 == "Flag" && /\[not in config files\]/) ||
+                    $1 ~ /-(clr|help)$/) print $1;
+                else print $1 "=";
+            }' <<< "$options")
+        candidates+=$'\n--list-modes'
+        mapfile -t COMPREPLY < <(compgen -W "$candidates" -- "$cur")
+        # An option with '=' needs a value before the trailing space.
+        if [[ ${#COMPREPLY[@]} -gt 1 || ${COMPREPLY[0]-} == *= ]]; then
+            compopt -o nospace 2>/dev/null
+        fi
+        return 0
+    fi
+
+    option=$prev
+    case $option in
+        --vo-decklink-mode)
+            # The probe only enumerates hardware; it never enables output.
+            candidates=$("$executable" --list-modes 2>/dev/null |
+                awk '/^  [^ ]{4}  / {print $1}')
+            candidates+=$'\nhelp'
+            ;;
+        --vo-decklink-device)
+            candidates=$("$executable" --list-modes 2>/dev/null |
+                awk '/^Device [0-9]+:/ {sub(/:$/, "", $2); print $2}')
+            ;;
+        --sub-file|--audio-file|--playlist|--screenshot-directory|--screenshot-dir)
+            _filedir
+            return
+            ;;
+        *)
+            if [[ $split == false ]]; then
+                _filedir
+                return
+            fi
+            doc=$(awk -v opt="$option" '$1 == opt {print; exit}' <<< "$options")
+            if [[ $doc == *'[file]'* ]]; then
+                _filedir
+                return
+            fi
+            case $doc in
+                *' Flag '*) candidates='yes no' ;;
+                *' Choices: '*)
+                    candidates=${doc#*Choices: }
+                    candidates=${candidates%%(*}
+                    ;;
+                *' Object settings list '*|*' Object '*)
+                    candidates=$("$executable" --no-config "$option=help" 2>/dev/null |
+                        awk '/^  [[:alnum:]_-]+[[:space:]]/ {print $1}')
+                    ;;
+            esac
+            ;;
+    esac
+    mapfile -t COMPREPLY < <(compgen -W "$candidates" -- "$cur")
+    return 0
+}
+
+complete -F _bmdmpv -o bashdefault -o default mpv-decklink
+# Bash retries the exact command after lazy loading (return 124). Register the
+# spelling being completed as well, e.g. ./mpv-decklink, on the first Tab.
+if [[ ${COMP_WORDS[0]-} == */mpv-decklink ]]; then
+    complete -F _bmdmpv -o bashdefault -o default "${COMP_WORDS[0]}"
+fi
