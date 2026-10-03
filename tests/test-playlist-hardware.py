@@ -77,6 +77,7 @@ with tempfile.TemporaryDirectory() as tmp:
 
     try:
         wait_for(lambda: not app.pending)
+        app.prefer_high_refresh.set(False)
         app.add_files(clips)
         wait_for(lambda: app.media is not None)
         app.decoder_combo.set('GPU · automática')

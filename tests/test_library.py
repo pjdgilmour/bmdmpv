@@ -11,7 +11,8 @@ from gui.library import Playlist, ProfileStore, read_playlist, write_playlist
 
 PROFILE = dict(card_index=0, card_name='Intensity Pro 4K', target='auto', mode='Hp29',
                audio_ao='pipewire', audio_device='auto', framing='fit', volume=23.5,
-               mute=False, delay=-.025, repeat='playlist', hwdec='nvdec-copy')
+               mute=False, delay=-.025, repeat='playlist', hwdec='nvdec-copy', youtube_browser='',
+               prefer_high_refresh=False)
 
 
 class PlaylistTest(unittest.TestCase):
@@ -90,10 +91,18 @@ class ProfilesTest(unittest.TestCase):
             store = ProfileStore(Path(tmp) / 'profiles.json')
             store.save('valid', PROFILE)
             for key, value in [('hwdec', 'nvdec'), ('volume', float('nan')), ('delay', 30),
-                               ('mute', 'yes'), ('repeat', 'anything'), ('card_index', -1)]:
+                               ('mute', 'yes'), ('repeat', 'anything'), ('card_index', -1),
+                               ('youtube_browser', 'invalid'), ('prefer_high_refresh', 'yes')]:
                 with self.subTest(key=key), self.assertRaises(ValueError):
                     store.save('bad', dict(PROFILE, **{key: value}))
             self.assertEqual(store.read(), {'valid': PROFILE})
+
+    def test_legacy_profile_without_browser_remains_usable(self):
+        from gui.library import validate_profile
+        legacy = dict(PROFILE)
+        legacy.pop('youtube_browser')
+        legacy.pop('prefer_high_refresh')
+        self.assertEqual(validate_profile(legacy), PROFILE)
 
 
 if __name__ == '__main__':

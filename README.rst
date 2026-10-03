@@ -31,16 +31,27 @@ reprodução automaticamente::
    aplicar atraso do áudio. Um atraso positivo retarda o áudio; negativo,
    retarda o vídeo. **Parar** libera a placa e permite trocar arquivo e saídas.
 
-A detecção automática distingue 23,976 de 24 fps e 29,97 de 30 fps. Prioriza
-a mesma frequência; depois, múltiplos inteiros; por último, a frequência
-mais próxima. Dentro desses critérios, procura a resolução adequada ao
-arquivo. Por exemplo, 720p29,97 sugere 1080p29,97 e UHD60 sugere 1080p60
-nesta Intensity. Ao forçar 720p para um arquivo de 29,97 fps, seleciona
-720p59,94 e informa a adaptação de cadência. Material entrelaçado identificado
+A detecção automática distingue 23,976 de 24 fps e 29,97 de 30 fps. Procura
+a mesma frequência, múltiplos inteiros e, por último, a frequência mais próxima,
+escolhendo uma resolução adequada. **Preferir 50/60 Hz na HDMI**, habilitado
+por padrão, troca uma frequência exata baixa por 50/59,94/60 Hz quando houver
+um múltiplo inteiro na mesma resolução: 1080p25 → 1080p50, 1080p29,97 →
+1080p59,94 e 1080p30 → 1080p60. Os quadros são repetidos, mantendo duração,
+velocidade e áudio originais. Essa preferência não força redução de resolução
+nem altera o **Modo manual**. Desmarque-a para priorizar a frequência nativa.
+Ela é salva nos perfis; perfis anteriores mantêm a seleção nativa até você
+ativar a opção e salvar novamente.
+
+Por exemplo, 720p29,97 sugere 1080p59,94 com a preferência ativa; UHD60
+sugere 1080p60 nesta Intensity. Ao forçar 720p para um arquivo de 29,97 fps,
+seleciona 720p59,94. Material entrelaçado identificado
 pelo ``ffprobe`` ativa o desentrelaçamento do mpv e considera a taxa de campos.
 Arquivos com taxa variável usam a taxa média informada pelo ``ffprobe``;
 a sugestão não garante reprodução sem repetição/descarte de quadros.
-O monitor conectado ainda precisa aceitar o modo selecionado.
+O monitor conectado ainda precisa aceitar o modo selecionado: o SDK enumera
+os modos da placa, sem validar os modos da tela. A consulta EDID pelo SDK não
+está disponível na Intensity/driver desta máquina. Se houver áudio mas a tela
+ficar sem sinal, experimente um modo HDMI que o monitor aceite.
 
 O **Enquadramento** oferece ajustar com barras preservando a imagem,
 preencher com corte das bordas e esticar sem preservar a proporção.
@@ -89,13 +100,15 @@ um avanço automático que esteja sendo preparado.
 
 **Salvar lista** grava M3U8 em UTF-8 com caminhos absolutos. **Abrir lista**
 substitui a lista atual; aceita M3U/M3U8 em UTF-8, comentários ``#EXTINF`` e
-caminhos relativos ao diretório da playlist. Somente arquivos locais são
-aceitos. Também se pode abrir a playlist pelo terminal::
+caminhos relativos ao diretório da playlist e links individuais do YouTube.
+A lista pode misturar arquivos locais e vídeos online. Também se pode abrir
+a playlist pelo terminal::
 
     ./bmdmpv-gui /caminho/sessao.m3u8
 
 Use **Salvar perfil** para guardar placa, resolução/modo HDMI, enquadramento,
-saída de áudio, volume, mute, atraso, repetição e opção de decodificação.
+saída de áudio, volume, mute, atraso, repetição, opção de decodificação e
+navegador para os cookies do YouTube e preferência por 50/60 Hz na HDMI.
 Escolha um nome existente para atualizá-lo. Para recuperar as opções,
 selecione o perfil e clique em **Aplicar**, com a reprodução parada.
 **Excluir** remove o perfil escolhido. A playlist é salva separadamente;
@@ -108,6 +121,62 @@ são preservados e o erro é mostrado ao tentar salvar/aplicar. Nenhum perfil
 impede aplicar o perfil inteiro, sem redirecionamento silencioso. A placa é
 identificada pelo índice e nome; se o índice mudou, um nome único pode ser
 usado para localizá-la novamente.
+
+Vídeos do YouTube
+-----------------
+
+Com a reprodução parada, clique em **YouTube…**, cole o link e confirme.
+O vídeo é acrescentado à playlist e a GUI consulta título, resolução, FPS
+e duração usando o ``yt-dlp`` instalado no PATH. Clique em **Reproduzir**
+para iniciar. A escolha de saída de áudio e o modo HDMI automático funcionam
+como para arquivos locais. Também é possível abrir um link pelo terminal::
+
+    ./bmdmpv-gui 'https://www.youtube.com/watch?v=Jad2vcodBLw'
+
+A seleção busca vídeo SDR até 2160p. O modo HDMI é calculado a partir do
+formato selecionado, antes de aplicar a resolução forçada/enquadramento.
+O mpv usa seu ``ytdl_hook`` para abrir vídeo e áudio, sem precisar baixar o
+arquivo inteiro primeiro. A playlist salva o link original do vídeo; os
+endereços temporários dos streams são consultados novamente a cada reprodução.
+**Parar** cancela uma consulta em andamento, cujo limite é de 60 segundos.
+
+São aceitos links de vídeos individuais, incluindo links curtos e Shorts.
+Parâmetros de início e de playlist no link são descartados; não há importação
+de canais/listas inteiras do YouTube nem suporte a transmissões ao vivo nesta
+versão. A integração ignora a configuração pessoal do yt-dlp.
+
+Em **Cookies do YouTube**, escolha o navegador em que está conectado à sua
+conta (inclusive YouTube Premium): Firefox, Chrome, Chromium, Edge, Brave,
+Opera ou Vivaldi. O yt-dlp lê os cookies diretamente do navegador, tanto na
+consulta quanto na reprodução, usando seu perfil padrão. Trocar o navegador
+refaz a consulta do item selecionado. **Sem cookies** mantém o acesso anônimo.
+A opção fica salva com **Salvar perfil**; perfis antigos continuam válidos e
+usam acesso sem cookies até você escolher um navegador.
+
+Somente o nome do navegador é salvo no perfil, sem exportar um arquivo de
+cookies. Para sessões autenticadas, o diagnóstico usa mensagens normais do
+mpv em vez do log de depuração, que pode incluir valores de cookies.
+O yt-dlp usa um runtime JavaScript disponível no PATH (Deno, Node, Bun ou
+QuickJS, nessa ordem) e pode baixar o componente EJS oficial do GitHub,
+como no downmedia. Consulte a `documentação do EJS
+<https://github.com/yt-dlp/yt-dlp/wiki/EJS>`_.
+
+O build requer Lua 5.2 para habilitar o ``ytdl_hook``. Em um build anterior,
+com os headers já disponíveis, execute ``./build-mpv.sh -Dlua=lua5.2``.
+O bootstrap prepara essa dependência localmente.
+
+**Estado da validação (03/10/2026):** o link acima foi identificado como
+“Sam Fender - Hypersonic Missiles (Live At London Stadium)”, em 1080p25,
+com sugestão inicial do modo ``Hp25``. O acesso anônimo retornava HTTP 403, inclusive
+diretamente pelo yt-dlp. Com cookies do **Firefox** e a configuração JavaScript
+acima, vídeo e áudio abriram na DeckLink, mas a tela ficou sem sinal em 25 Hz.
+O usuário confirmou imagem em **1080p50**, usando CPU. A seleção automática
+agora sugere ``Hp50`` com a preferência por 50/60 Hz ativa. O teste passou com
+formatos ``721+251``, buffer de imagem não preto, pausa, busca, retomada e
+encerramento. O áudio ficou silenciado no teste. O yt-dlp do sistema não foi
+substituído. Logs: ``test-results/youtube-video-auto-check.log`` e
+``test-results/youtube-hardware.log``. ``test-results/youtube-frame-cpu.png``
+registra o buffer enviado ao SDK, sem representar uma captura física da HDMI.
 
 Decodificação acelerada
 ----------------------
@@ -295,7 +364,8 @@ Compilação
 ----------
 
 Ferramentas: C/C++, Meson >= 1.3, Ninja, Python 3 e pkg-config. O mpv exige os
-headers do FFmpeg, libass e libplacebo >= 7.360.1. Este Debian 13 oferece
+headers do FFmpeg, libass, Lua 5.2 (para YouTube) e libplacebo >= 7.360.1.
+Este Debian 13 oferece
 libplacebo 7.349, então foi compilado localmente o commit
 ``92b5ac6db79f4d680eb656692f7bf51e9606f42a`` (7.374.0).
 
@@ -327,7 +397,7 @@ Em um ambiente com todas as dependências instaladas, também é possível compi
 diretamente com Meson::
 
     meson setup build-custom mpv -Ddecklink=enabled \
-      -Ddecklink-sdk='/caminho/SDK/Linux/include' -Dmanpage-build=disabled
+      -Ddecklink-sdk='/caminho/SDK/Linux/include' -Dmanpage-build=disabled -Dlua=lua5.2
     meson compile -C build-custom
     ./build-custom/mpv --no-config --vo=decklink --ao=decklink --hwdec=no \
       --vo-decklink-mode=Hp29 video.mkv
@@ -345,24 +415,37 @@ Testes sem dispositivo::
     meson test -C build-mpv --print-errorlogs
     python3 tests/test_gui.py
     python3 tests/test_library.py
+    python3 tests/test_youtube.py
+    python3 tests/test-youtube-ipc.py
+    python3 tests/test-youtube-ipc.py --with-cookies
 
-Os nove testes da GUI verificam seleção de modos, taxas fracionárias,
+Os dez testes da GUI verificam seleção de modos, taxas fracionárias,
 resolução forçada, metadados, seleção de áudio, argumentos sem shell e
 seleção de decodificação com cópia para RAM, além de controle IPC com o mpv
 real usando saídas nulas. O teste IPC precisa de
 permissão para sockets Unix locais, mas não acessa a placa nem emite som.
-Os cinco testes de persistência cobrem ordem da playlist, M3U8, perfis,
-validação de dados e preservação do arquivo anterior em falhas de gravação.
+Os seis testes de persistência cobrem ordem da playlist, M3U8, perfis,
+compatibilidade com perfis antigos, validação de dados e preservação do
+arquivo anterior em falhas de gravação.
+Os sete testes de YouTube cobrem links, formatos SDR, metadados, argumentos,
+seleção do navegador nas duas etapas,
+playlist mista e cancelamento com encerramento do extrator. O teste adicional
+``test-youtube-ipc.py`` usa um extrator simulado e streams HTTP locais separados
+para exercitar o ``ytdl_hook`` real, áudio/vídeo, pausa, busca e encerramento.
+Requer FFmpeg, Lua habilitada no mpv e sockets locais; não acessa o YouTube.
+A variante ``--with-cookies`` usa cookies simulados e verifica que seus
+valores não aparecem no diagnóstico; não lê cookies reais do navegador.
 
 Com uma sessão gráfica, sem acessar a placa::
 
     python3 tests/test_gui_state.py
 
-Esses seis testes usam player e dispositivos simulados para verificar
+Esses oito testes usam player e dispositivos simulados para verificar
 avanço, repetição, troca de formato, cancelamento durante análise/transição,
 resultados atrasados de consultas, arquivos inválidos e aplicação atômica
-de perfis com interface de áudio ausente. São 20 testes ao todo nesses três
-arquivos.
+de perfis com interface de áudio ausente, além da inclusão e cancelamento
+de consultas do YouTube e a preferência por 50/60 Hz. São 31 testes unitários nos quatro arquivos
+``test_gui.py``, ``test_library.py``, ``test_youtube.py`` e ``test_gui_state.py``.
 
 A ponte é testada com interfaces simuladas geradas a partir dos headers reais:
 FPS fracionário, seleção de modos, dispositivo ausente, inicialização parcial,
@@ -388,10 +471,21 @@ Logs e screenshots são gravados em ``test-results/``. Os screenshots de
 vídeo verificam o buffer enviado; não são uma captura física da HDMI.
 
 O teste de playlist requer GPU NVIDIA/NVDEC e gera clipes H.264/HEVC SDR:
-verifica decodificação real por GPU com áudio HDMI silenciado, transição
+verifica decodificação real por GPU com áudio HDMI silenciado e preferência
+por 50/60 Hz desativada, transição
 automática 1080p29,97 → 720p50 → 1080p29,97, repetição da lista, perfis e
 reprodução pela CPU de um clipe não elegível para aceleração automática.
 Os logs ficam em ``test-results/playlist-gpu-*.log``.
+
+O teste online é separado e requer acesso aos streams do YouTube::
+
+    python3 tests/test-youtube-hardware.py --browser firefox --url 'https://www.youtube.com/watch?v=Jad2vcodBLw'
+
+Ele verifica a inclusão pela GUI, metadados, buffer de vídeo não preto,
+envio ao SDK com áudio silenciado, pausa, busca e encerramento. A imagem
+no monitor exige confirmação visual. Use ``--cpu`` para decodificação por
+software, ``--mode Hp50`` para forçar esse modo e ``--hold 45`` para observar
+a saída durante 45 segundos. Sem ``--browser``, testa o acesso anônimo.
 
 Esses testes passaram nesta máquina em 1080p29,97 e 2160p29,97: abertura,
 envio pelo SDK, FPS reportado, proporção 4:3 com barras, pausa, busca exata,
@@ -423,6 +517,8 @@ Arquitetura
 ``gui/core.py`` faz descoberta, escolha de modo e IPC em threads separadas.
 ``gui/library.py`` contém playlist/M3U8 e persistência de perfis;
 ``gui/profiles.py`` e ``gui/playlist_window.py`` implementam seus controles.
+``gui/sources.py`` valida fontes locais e links do YouTube;
+``gui/youtube.py`` consulta os formatos com o yt-dlp em um processo cancelável.
 
 ``mpv/video/out/vo_decklink.c`` implementa o VO e usa o scaler/OSD do mpv.
 ``decklink_bridge.cpp`` isola a API C++/COM do SDK atrás de uma interface C,

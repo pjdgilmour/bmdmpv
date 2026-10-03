@@ -5,6 +5,8 @@ import math
 import os
 from pathlib import Path
 import tempfile
+from .sources import is_remote, normalize_source
+from .youtube import BROWSERS
 
 HWDECS = {'no', 'auto-copy', 'nvdec-copy', 'vaapi-copy'}
 REPEATS = {'none', 'file', 'playlist'}
@@ -12,11 +14,11 @@ REPEATS = {'none', 'file', 'playlist'}
 
 class Playlist:
     def __init__(self, paths=()):
-        self.paths = [str(Path(p).expanduser().resolve()) for p in paths]
+        self.paths = [normalize_source(p) for p in paths]
         self.index = 0 if self.paths else -1
 
     def append(self, paths):
-        self.paths.extend(str(Path(p).expanduser().resolve()) for p in paths)
+        self.paths.extend([normalize_source(p) for p in paths])
         if self.index < 0 and self.paths:
             self.index = 0
 
@@ -56,8 +58,9 @@ def read_playlist(path):
     for line in text.splitlines():
         if not line.strip() or line.startswith('#'):
             continue
-        if '://' in line or line.startswith(('file:', 'http:', 'https:')):
-            raise ValueError('Esta playlist aceita somente caminhos de arquivos locais, sem URLs.')
+        if is_remote(line):
+            paths.append(normalize_source(line))
+            continue
         item = Path(line).expanduser()
         paths.append(str((item if item.is_absolute() else path.parent / item).resolve()))
     return Playlist(paths)
@@ -91,8 +94,12 @@ def validate_profile(profile):
         raise ValueError('Perfil inválido.')
     required = {'card_index', 'card_name', 'target', 'mode', 'audio_ao', 'audio_device',
                 'framing', 'volume', 'mute', 'delay', 'repeat', 'hwdec'}
-    if set(profile) != required:
+    if not required <= set(profile) or set(profile) - required - {'youtube_browser', 'prefer_high_refresh'}:
         raise ValueError('O perfil tem campos ausentes ou desconhecidos.')
+    if profile.get('youtube_browser', '') not in BROWSERS.values():
+        raise ValueError('Navegador de cookies inválido no perfil.')
+    if type(profile.get('prefer_high_refresh', False)) is not bool:
+        raise ValueError('Preferência de frequência HDMI inválida no perfil.')
     if type(profile['card_index']) is not int or not 0 <= profile['card_index'] <= 255:
         raise ValueError('Índice de placa inválido no perfil.')
     for key in ('card_name', 'mode', 'audio_ao', 'audio_device', 'framing', 'repeat', 'hwdec'):
@@ -112,7 +119,8 @@ def validate_profile(profile):
         value = profile[key]
         if type(value) not in (int, float) or not math.isfinite(value) or not low <= value <= high:
             raise ValueError('Valor inválido no perfil: ' + key)
-    return dict(profile)
+    return dict(profile, youtube_browser=profile.get('youtube_browser', ''),
+                prefer_high_refresh=profile.get('prefer_high_refresh', False))
 
 
 class ProfileStore:

@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
-from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from .library import read_playlist, write_playlist
+from .sources import source_name
 
 
 class PlaylistWindow:
@@ -60,7 +60,7 @@ class PlaylistWindow:
         self.tree.delete(*self.tree.get_children())
         for i, path in enumerate(self.app.playlist.paths):
             current = i == self.app.playlist.index
-            label = f'{"▶ " if current else ""}{i + 1:02}  {Path(path).name}'
+            label = f'{"▶ " if current else ""}{i + 1:02}  {self.app.source_titles.get(path) or source_name(path)}'
             self.tree.insert('', 'end', iid=str(i), values=(label, path), tags=('current',) if current else ())
         if selected is not None and 0 <= selected < len(self.app.playlist.paths):
             self.tree.selection_set(str(selected))

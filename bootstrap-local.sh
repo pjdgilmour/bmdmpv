@@ -8,7 +8,7 @@ mkdir -p .deps/debs
     apt-get download libavcodec-dev libavfilter-dev libavformat-dev \
         libavutil-dev libswresample-dev libswscale-dev libpostproc-dev \
         libavdevice-dev libass-dev libunibreak-dev liblcms2-dev \
-        libvulkan-dev libxxhash-dev libpulse-dev libpipewire-0.3-dev libspa-0.2-dev
+        libvulkan-dev libxxhash-dev libpulse-dev libpipewire-0.3-dev libspa-0.2-dev liblua5.2-dev
 )
 python3 scripts/extract-local-deps.py
 revision=92b5ac6db79f4d680eb656692f7bf51e9606f42a
@@ -32,4 +32,4 @@ fi
 meson compile -C .deps/libplacebo-build -j "${JOBS:-4}"
 meson install -C .deps/libplacebo-build
 ./build-probe.sh
-./build-mpv.sh -Dlibavdevice=enabled -Dpipewire=enabled -Dpulse=enabled
+./build-mpv.sh -Dlibavdevice=enabled -Dpipewire=enabled -Dpulse=enabled -Dlua=lua5.2

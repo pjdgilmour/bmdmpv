@@ -7,7 +7,7 @@ if [ -d .deps/local ]; then
 fi
 if [ ! -f build-mpv/build.ninja ]; then
     meson setup build-mpv mpv -Ddecklink=enabled "-Ddecklink-sdk=$sdk" \
-        -Dmanpage-build=disabled -Dtests=true -Dvulkan=disabled "$@"
+        -Dmanpage-build=disabled -Dtests=true -Dvulkan=disabled -Dlua=lua5.2 "$@"
 elif [ "$#" -gt 0 ]; then
     meson setup --reconfigure build-mpv mpv "$@"
 fi

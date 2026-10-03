@@ -3,6 +3,7 @@
 from tkinter import messagebox, simpledialog, ttk
 
 from .library import validate_profile
+from .youtube import BROWSERS
 
 
 class Profiles:
@@ -50,7 +51,9 @@ class Profiles:
             'audio_ao': audio.ao, 'audio_device': audio.device,
             'framing': FRAMING[app.framing_combo.get()], 'volume': app.volume.get(),
             'mute': app.mute.get(), 'delay': float(app.delay.get().replace(',', '.')),
-            'repeat': REPEATS[app.repeat_combo.get()], 'hwdec': DECODERS[app.decoder_combo.get()]})
+            'repeat': REPEATS[app.repeat_combo.get()], 'hwdec': DECODERS[app.decoder_combo.get()],
+            'youtube_browser': BROWSERS[app.browser_combo.get()],
+            'prefer_high_refresh': app.prefer_high_refresh.get()})
 
     def apply_data(self, profile):
         from .app import DECODERS, FRAMING, REPEATS, TARGETS
@@ -88,9 +91,14 @@ class Profiles:
         app.set_volume(p['volume'])
         app.mute.set(p['mute'])
         app.delay.set(f"{p['delay']:.3f}")
+        app.prefer_high_refresh.set(p['prefer_high_refresh'])
         app.decoder_changed()
         app.repeat_changed()
         app.update_mode()
+        browser_label = next(k for k, v in BROWSERS.items() if v == p['youtube_browser'])
+        if app.browser_combo.get() != browser_label:
+            app.browser_combo.set(browser_label)
+            app.browser_changed()
 
     def apply(self):
         try:

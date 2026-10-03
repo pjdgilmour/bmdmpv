@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from gui.app import App
 from gui.core import Audio, Card, Media, Mode
 from gui.library import Playlist, ProfileStore
+from gui.youtube import ProbeCancelled
 
 
 class FakePlayer:
@@ -159,11 +160,14 @@ class ControllerTest(unittest.TestCase):
         self.app.decoder_combo.set('NVIDIA · NVDEC')
         self.app.volume.set(32)
         self.app.repeat_combo.set('Repetir playlist')
+        self.app.browser_combo.set('Firefox')
         data = self.app.profiles.snapshot()
         self.app.profile_store.save('Yamaha GPU', data)
         restored = ProfileStore(self.app.profile_store.path).read()['Yamaha GPU']
         self.app.audio_combo.current(0)
         self.app.volume.set(80)
+        self.app.browser_combo.set('Sem cookies')
+        self.app.prefer_high_refresh.set(False)
         self.app.profiles.apply_data(restored)
         self.assertEqual(self.app.profiles.snapshot(), data)
         before = self.app.profiles.snapshot()
@@ -175,6 +179,49 @@ class ControllerTest(unittest.TestCase):
         self.app.playlist_window.remove()
         self.assertIsNone(self.app.media)
         self.assertEqual(self.app.playlist.index, -1)
+
+    def test_high_refresh_default_toggle_and_manual_mode(self):
+        card = self.app.cards[0]
+        card.modes += [Mode('Hp25', 1920, 1080, 25, '1080p25'),
+                       Mode('Hp50', 1920, 1080, 50, '1080p50')]
+        self.app.card_changed()
+        with patch('gui.app.probe_media', return_value=Media('/show.mkv', 1920, 1080, 25, 10, True, True)):
+            self.app.add_files(['/show.mkv'])
+            self.wait(lambda: self.app.media is not None)
+        self.assertEqual(self.app.mode.code, 'Hp50')
+        self.app.refresh_preference.invoke()
+        self.assertEqual(self.app.mode.code, 'Hp25')
+        self.app.target_combo.set('Modo manual')
+        self.app.refresh_preference.invoke()
+        self.assertEqual(self.app.mode.code, 'Hp25')
+
+    def test_youtube_button_title_and_cancellation(self):
+        url = 'https://www.youtube.com/watch?v=aqz-KE-bpKQ'
+        def remote(path, cancel=None, browser=''):
+            return Media(path, 1920, 1080, 30, 10, True, True,
+                         title='YouTube de teste', ytdl_format='137+140', youtube_browser=browser)
+        with patch('gui.app.simpledialog.askstring', return_value=url), patch('gui.app.probe_media', remote):
+            self.app.youtube_button.invoke()
+            self.wait(lambda: self.app.media is not None)
+        self.assertEqual(self.app.playlist.paths, [url])
+        self.assertIsNone(self.app.player)
+        self.assertIn('YouTube de teste', self.app.path.get())
+        self.assertEqual(self.app.source_titles[url], 'YouTube de teste')
+        with patch('gui.app.probe_media', remote):
+            self.app.browser_combo.set('Firefox')
+            self.app.browser_changed()
+            self.wait(lambda: self.app.media is not None and not self.app.pending)
+        self.assertIn('cookies-from-browser=firefox', ' '.join(self.app.current_args()))
+        def cancellable(path, cancel, browser=''):
+            cancel.wait(3)
+            raise ProbeCancelled()
+        with patch('gui.app.probe_media', cancellable):
+            self.app.select_item(0, autoplay=True)
+            self.app.stop()
+            self.wait(lambda: not self.app.pending)
+        self.assertIsNone(self.app.player)
+        self.assertFalse(self.app.busy())
+        self.assertEqual(self.app.status.get(), 'Consulta cancelada')
 
 
 if __name__ == '__main__':

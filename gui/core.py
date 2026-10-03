@@ -14,6 +14,7 @@ import threading
 import time
 
 from .library import HWDECS
+from .sources import is_remote
 
 BASE = Path(__file__).resolve().parent.parent
 MPV = BASE / 'build-mpv/mpv'
@@ -62,6 +63,9 @@ class Media:
     interlaced: bool = False
     unsupported_color: bool = False
     video_id: int | None = None
+    title: str = ''
+    ytdl_format: str = ''
+    youtube_browser: str = ''
 
 
 def run_text(args, timeout=15):
@@ -138,7 +142,10 @@ def parse_media(path, data):
                  interlaced, hdr, (1 + [s for s in streams if s.get('codec_type') == 'video'].index(video)) if video else None)
 
 
-def probe_media(path):
+def probe_media(path, cancel=None, browser=''):
+    if is_remote(path):
+        from .youtube import probe_youtube
+        return probe_youtube(path, cancel, browser)
     path = Path(path).expanduser().resolve()
     if not path.is_file():
         raise ValueError('Selecione um arquivo de mídia existente.')
@@ -150,7 +157,7 @@ def probe_media(path):
     return media
 
 
-def choose_mode(modes, media, height=None):
+def choose_mode(modes, media, height=None, prefer_high_refresh=False):
     candidates = [m for m in modes if height is None or m.height == height]
     if not candidates:
         raise ValueError('A placa não oferece modos nessa resolução.')
@@ -167,7 +174,18 @@ def choose_mode(modes, media, height=None):
         return (cadence, 0 if cadence < 2 else abs(m.fps - fps),
                 0 if fits else 1, area if fits else -area, abs(m.fps - fps))
 
-    return min(candidates, key=score)
+    selected = min(candidates, key=score)
+    if prefer_high_refresh and abs(selected.fps - fps) < .002:
+        # The card's mode list is not the monitor's EDID. Prefer standard
+        # 50/59.94/60 Hz transport for low-rate sources when every frame can
+        # be repeated evenly, without sacrificing the selected resolution.
+        alternatives = [m for m in candidates
+                        if (m.width, m.height) == (selected.width, selected.height)
+                        and any(abs(m.fps - f) < .002 for f in (50, 60000/1001, 60))
+                        and m.fps > fps and abs(m.fps / fps - round(m.fps / fps)) < .0002]
+        if alternatives:
+            return min(alternatives, key=lambda m: m.fps)
+    return selected
 
 
 def mode_note(mode, media):
@@ -180,7 +198,11 @@ def mode_note(mode, media):
                      ('Upscale' if scale > 1 else 'Downscale') + ' por software (mpv)')
     if media.fps:
         if abs(mode.fps - media.fps) >= .002:
-            parts.append(f'Cadência adaptada: {media.fps:.3f} → {mode.fps:.3f} fps')
+            ratio = mode.fps / media.fps
+            if ratio > 1 and abs(ratio - round(ratio)) < .0002:
+                parts.append(f'HDMI {mode.fps:.3f} Hz · quadros repetidos {round(ratio)}× · velocidade original')
+            else:
+                parts.append(f'Cadência adaptada: {media.fps:.3f} → {mode.fps:.3f} fps')
         else:
             parts.append('Taxa de quadros preservada')
     else:
@@ -202,7 +224,7 @@ def playback_args(media, card, mode, audio, framing='fit', volume=80, delay=0,
         raise ValueError('Este backend requer decodificação CPU ou GPU com cópia para RAM.')
     args = [str(MPV), '--no-config', '--vo=decklink', f'--hwdec={hwdec}',
             f'--vo-decklink-device={card.index}', f'--vo-decklink-mode={mode.code}',
-            '--keep-open=yes', '--input-terminal=no', '--terminal=no',
+            '--keep-open=yes', '--input-terminal=no', '--terminal=no', '--osc=no',
             '--osd-level=0', f'--volume={float(volume):.1f}', f'--audio-delay={delay}',
             f'--mute={"yes" if mute else "no"}', f'--loop-file={"inf" if loop else "no"}',
             f'--keepaspect={"no" if framing == "stretch" else "yes"}',
@@ -218,6 +240,15 @@ def playback_args(media, card, mode, audio, framing='fit', volume=80, delay=0,
         args += ['--vid=no', '--force-window=immediate']
     if media.interlaced:
         args.append('--deinterlace=yes')
+    if media.ytdl_format:
+        from .youtube import extractor_options
+        options = dict.fromkeys(('ignore-config', 'no-playlist', 'no-cache-dir'), '')
+        options.update({'socket-timeout': '10', 'retries': '1', 'extractor-retries': '1', 'sub-langs': '-all'})
+        options.update(extractor_options(media.youtube_browser))
+        args += ['--ytdl=yes', '--ytdl-format=' + media.ytdl_format,
+                 '--script-opts=ytdl_hook-ytdl_path=yt-dlp,ytdl_hook-all_formats=no',
+                 '--ytdl-raw-options=' + ','.join(k + '=' + v for k, v in options.items()),
+                 '--osd-bar=no']
     return args + ['--', media.path]
 
 
@@ -259,7 +290,12 @@ class Player:
                 logpath = Path(tmp) / 'mpv.log'
                 args = self.args[:]
                 separator = args.index('--')
-                args[separator:separator] = ['--input-ipc-server=' + ipc, '--log-file=' + str(logpath)]
+                logging_args = ['--log-file=' + str(logpath)]
+                if any(a.startswith('--ytdl-raw-options=') and 'cookies-from-browser=' in a for a in args):
+                    # mpv's log-file records debug properties, including cookies.
+                    # Authenticated sessions retain only normal console messages.
+                    logging_args = ['--terminal=yes', '--msg-level=all=info', '--msg-color=no']
+                args[separator:separator] = ['--input-ipc-server=' + ipc] + logging_args
                 with (Path(tmp) / 'console.log').open('w+') as console:
                     try:
                         proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=console, stderr=console)
@@ -336,4 +372,6 @@ class Player:
         finally:
             if sock:
                 sock.close()
+            if error and '--ytdl=yes' in self.args and re.search(r'HTTP [Ee]rror 403', log):
+                error = 'O YouTube recusou o acesso ao stream (HTTP 403). Confira o Diagnóstico.'
             self.emit('finished', {'code': returncode, 'error': error, 'log': log})

@@ -51,6 +51,9 @@ def snapshot(name):
 
 try:
     wait_for(lambda: app.media and app.cards and not app.pending)
+    # Exercise the original native-rate path; the YouTube test covers 25→50 Hz.
+    app.prefer_high_refresh.set(False)
+    app.update_mode()
     assert app.mode.code == 'Hp29', app.mode
     app.volume.set(20)
     app.set_volume(20)

@@ -6,13 +6,15 @@ import queue
 import shlex
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .core import (BASE, Audio, Player, choose_mode, discover_audio, discover_cards,
                    mode_note, playback_args, probe_media)
 from .library import Playlist, ProfileStore, read_playlist
 from .playlist_window import PlaylistWindow
 from .profiles import Profiles
+from .sources import is_remote, normalize_source, youtube_url
+from .youtube import BROWSERS, ProbeCancelled
 
 TARGETS = {'Automático · priorizar FPS': None, 'HD · 720p': 720,
            'Full HD · 1080p': 1080, 'Ultra HD · 2160p': 2160, 'Modo manual': 'manual'}
@@ -46,6 +48,8 @@ class App:
         self.profile_store = ProfileStore(profile_path)
         self.switch_to = None
         self.autoplay_generation = None
+        self.media_cancel = None
+        self.source_titles = {}
         self.duration = 0
         self.position = 0
         self.dragging = False
@@ -64,6 +68,7 @@ class App:
         self.volume = tk.DoubleVar(value=80)
         self.volume_label = tk.StringVar(value='80%')
         self.mute = tk.BooleanVar(value=False)
+        self.prefer_high_refresh = tk.BooleanVar(value=True)
         self.decoding = tk.StringVar(value='Decodificação: CPU · redimensionamento na CPU')
         self.delay = tk.StringVar(value='0.000')
         self._theme()
@@ -74,13 +79,16 @@ class App:
         self.poll_id = root.after(50, self.poll)
         self.refresh()
         if initial_file:
-            if Path(initial_file).suffix.lower() in ('.m3u', '.m3u8'):
+            if not is_remote(initial_file) and Path(initial_file).suffix.lower() in ('.m3u', '.m3u8'):
                 try:
                     self.replace_playlist(read_playlist(initial_file))
                 except (OSError, ValueError) as exc:
                     messagebox.showerror('Playlist inválida', str(exc))
             else:
-                self.load(initial_file)
+                try:
+                    self.load(initial_file)
+                except ValueError as exc:
+                    messagebox.showerror('Fonte inválida', str(exc))
 
     def _theme(self):
         self.root.title('bmdmpv · Player HDMI')
@@ -161,10 +169,25 @@ class App:
         row.pack(fill='x')
         self.playlist_button = ttk.Button(row, text='Playlist (0)', command=self.show_playlist)
         self.playlist_button.pack(side='right')
+        self.youtube_button = ttk.Button(row, text='YouTube…', command=self.add_youtube)
+        self.youtube_button.pack(side='right', padx=(8, 0))
+        self.widgets_locked.append(self.youtube_button)
         self.open_button = ttk.Button(row, text='Adicionar arquivos…', command=self.browse)
         self.open_button.pack(side='right', padx=(12, 0))
         self.widgets_locked.append(self.open_button)
-        ttk.Label(row, textvariable=self.path, wraplength=570).pack(side='left', fill='x', expand=True)
+        path_label = ttk.Label(row, textvariable=self.path, wraplength=440)
+        path_label.pack(side='left', fill='x', expand=True)
+        path_label.bind('<Configure>', lambda e: path_label.configure(wraplength=max(100, e.width)))
+        cookie_row = ttk.Frame(filepanel, style='Card.TFrame')
+        cookie_row.pack(fill='x', pady=(10, 0))
+        ttk.Label(cookie_row, text='Cookies do YouTube', style='Muted.TLabel').pack(side='left', padx=(0, 10))
+        self.browser_combo = ttk.Combobox(cookie_row, values=list(BROWSERS), state='readonly', width=15)
+        self.browser_combo.current(0)
+        self.browser_combo.pack(side='left')
+        self.browser_combo.bind('<<ComboboxSelected>>', self.browser_changed)
+        self.widgets_locked.append(self.browser_combo)
+        ttk.Label(cookie_row, text='Use o navegador conectado à sua conta.',
+                  style='Muted.TLabel').pack(side='left', padx=(10, 0))
         ttk.Label(filepanel, textvariable=self.info, style='Muted.TLabel', wraplength=900).pack(anchor='w', pady=(10, 0))
         outputs = ttk.Frame(outer)
         outputs.pack(fill='x', pady=(0, 12))
@@ -177,6 +200,10 @@ class App:
         self.card_combo = self.combo(video, 'Placa de saída', [], self.card_changed)
         self.target_combo = self.combo(video, 'Resolução de saída', list(TARGETS), self.update_mode)
         self.mode_combo = self.combo(video, 'Formato HDMI', [], self.update_mode)
+        self.refresh_preference = ttk.Checkbutton(video, text='Preferir 50/60 Hz na HDMI',
+                                                  variable=self.prefer_high_refresh, command=self.update_mode)
+        self.refresh_preference.pack(anchor='w', pady=(0, 12))
+        self.widgets_locked.append(self.refresh_preference)
         self.framing_combo = self.combo(video, 'Enquadramento', list(FRAMING), self.update_mode)
         self.decoder_combo = self.combo(video, 'Decodificação', list(DECODERS), self.decoder_changed)
         ttk.Label(video, textvariable=self.decoding, style='Muted.TLabel', wraplength=445).pack(anchor='w')
@@ -242,14 +269,16 @@ class App:
         ttk.Label(outer, textvariable=self.route, style='Sub.TLabel').pack(anchor='w', pady=(8, 0))
         self.refresh_playlist()
 
-    def job(self, name, fn):
+    def job(self, name, fn, daemon=True):
         self.pending.add(name)
         def worker():
             try:
                 self.events.put((name, 'result', fn()))
+            except ProbeCancelled:
+                self.events.put((name, 'cancelled', None))
             except Exception as exc:
                 self.events.put((name, 'error', str(exc)))
-        threading.Thread(target=worker, daemon=True).start()
+        threading.Thread(target=worker, daemon=daemon).start()
 
     def refresh(self):
         if self.busy() or 'cards' in self.pending or 'audio' in self.pending:
@@ -270,6 +299,26 @@ class App:
 
     def busy(self):
         return self.player is not None or self.switch_to is not None or self.autoplay_generation is not None
+
+    def add_youtube(self):
+        if self.busy():
+            return
+        value = simpledialog.askstring('Abrir YouTube', 'Cole o link de um vídeo do YouTube:', parent=self.root)
+        if value is None:
+            return
+        try:
+            source = youtube_url(value)
+        except ValueError as exc:
+            messagebox.showerror('Link inválido', str(exc), parent=self.root)
+            return
+        self.playlist.append([source])
+        self.select_item(len(self.playlist.paths) - 1)
+
+    def browser_changed(self, event=None):
+        if not self.busy() and self.playlist.index >= 0:
+            path = self.playlist.paths[self.playlist.index]
+            if is_remote(path):
+                self._load_entry(path)
 
     def show_playlist(self):
         if self.playlist_window and self.playlist_window.exists():
@@ -307,6 +356,8 @@ class App:
             if self.player:
                 return
             self.generation += 1
+            if self.media_cancel:
+                self.media_cancel.set()
             self.media = None
             self.path.set('Nenhum arquivo selecionado')
             self.info.set('Adicione arquivos à playlist para começar.')
@@ -340,14 +391,23 @@ class App:
         self.replace_playlist(Playlist([path]))
 
     def _load_entry(self, path, autoplay=False):
+        if self.media_cancel:
+            self.media_cancel.set()
+        cancel = threading.Event() if is_remote(path) else None
+        self.media_cancel = cancel
         self.generation += 1
         self.autoplay_generation = self.generation if autoplay else None
         self.media = None
-        self.path.set(str(Path(path).expanduser().resolve()))
-        self.info.set('Analisando o arquivo…')
+        self.path.set(normalize_source(path))
+        self.info.set('Consultando o YouTube com yt-dlp…' if cancel else 'Analisando o arquivo…')
         self.lock(self.busy())
         self.update_mode()
-        self.job(('media', self.generation), lambda: probe_media(path))
+        if cancel is not None:
+            self.stop_button.state(['!disabled'])
+        browser = BROWSERS[self.browser_combo.get()]
+        self.job(('media', self.generation),
+                 lambda: probe_media(path, cancel, browser=browser) if cancel is not None else probe_media(path),
+                 daemon=cancel is None)
 
     def maybe_autoplay(self):
         if (self.autoplay_generation != self.generation or not self.media or
@@ -380,7 +440,8 @@ class App:
         if card and self.media:
             try:
                 self.mode = (card.modes[self.mode_combo.current()] if manual else
-                             choose_mode(card.modes, self.media, TARGETS[self.target_combo.get()]))
+                             choose_mode(card.modes, self.media, TARGETS[self.target_combo.get()],
+                                         prefer_high_refresh=self.prefer_high_refresh.get()))
                 self.mode_combo.set(self.mode.label)
                 note = mode_note(self.mode, self.media)
                 if FRAMING[self.framing_combo.get()] == 'fill':
@@ -479,6 +540,8 @@ class App:
 
     def stop(self, transition=False):
         if not transition:
+            if self.media_cancel:
+                self.media_cancel.set()
             self.autoplay_generation = None
             if self.switch_to:
                 self.switch_to = (self.switch_to[0], False)
@@ -492,6 +555,8 @@ class App:
 
     def close(self):
         self.closing = True
+        if self.media_cancel:
+            self.media_cancel.set()
         self.switch_to = None
         self.autoplay_generation = None
         if self.player:
@@ -571,7 +636,10 @@ class App:
                     if error:
                         self.diagnostics += '\n' + error
                         if not self.closing:
-                            messagebox.showerror('Não foi possível reproduzir', error + '\n\nConfira o Diagnóstico. Feche outros aplicativos que estejam usando a placa.')
+                            hint = ('Confira o Diagnóstico, a conexão e o yt-dlp. O YouTube pode recusar o stream mesmo após fornecer seus metadados.'
+                                    if self.media and self.media.ytdl_format else
+                                    'Confira o Diagnóstico. Feche outros aplicativos que estejam usando a placa.')
+                            messagebox.showerror('Não foi possível reproduzir', error + '\n\n' + hint)
                     if self.closing:
                         self.destroy()
                         return
@@ -581,7 +649,12 @@ class App:
                 self.pending.discard(source)
                 if isinstance(source, tuple) and source != ('media', self.generation):
                     continue
-                if kind == 'error':
+                if kind == 'cancelled':
+                    self.autoplay_generation = None
+                    self.info.set('Consulta cancelada. Selecione o item na playlist para tentar novamente.')
+                    self.status.set('Consulta cancelada')
+                    self.lock(False)
+                elif kind == 'error':
                     self.diagnostics += f'\n{source}: {value}\n'
                     self.status.set('Falha ao consultar arquivo/dispositivos · veja Diagnóstico')
                     if isinstance(source, tuple):
@@ -604,6 +677,11 @@ class App:
                     self.audio_combo.set(selected if selected in [a.label for a in value] else value[0].label)
                 else:
                     self.media = value
+                    self.media_cancel = None
+                    if value.title:
+                        self.source_titles[value.path] = value.title
+                        self.path.set(value.title + '\n' + value.path)
+                        self.refresh_playlist()
                     self.duration = value.duration
                     self.position = 0
                     details = (f'{value.width:g} × {value.height:g} · {value.fps:.3f} fps' if value.video else 'Somente áudio')
@@ -611,6 +689,7 @@ class App:
                     self.clock.set(f'00:00:00 / {timestamp(value.duration)}')
                     self.seek_scale.configure(to=max(1, self.duration))
                     self.seek_scale.set(0)
+                    self.stop_button.state(['disabled'])
                     self.update_mode()
                 self.maybe_autoplay()
                 if not self.player and not self.pending & {'cards', 'audio'}:
@@ -647,7 +726,7 @@ class App:
 
 def main():
     parser = argparse.ArgumentParser(description='Player gráfico para a saída Blackmagic HDMI.')
-    parser.add_argument('arquivo', nargs='?', help='Mídia ou playlist M3U8 para abrir (sem reprodução automática).')
+    parser.add_argument('arquivo', nargs='?', help='Arquivo, link do YouTube ou playlist M3U8 (sem reprodução automática).')
     args = parser.parse_args()
     root = tk.Tk()
     App(root, args.arquivo)

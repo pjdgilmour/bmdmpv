@@ -30,6 +30,16 @@ def media(w=1920, h=1080, fps=24):
 
 
 class ModesTest(unittest.TestCase):
+    def test_hdmi_high_refresh_keeps_resolution_and_even_cadence(self):
+        for fps, expected in [(25, 'Hp50'), (30000/1001, 'Hp59'), (30, 'Hp60'),
+                              (24, '24ps'), (24000/1001, '23ps'), (50, 'Hp50')]:
+            with self.subTest(fps=fps):
+                self.assertEqual(choose_mode(MODES, media(fps=fps), prefer_high_refresh=True).code, expected)
+        self.assertEqual(choose_mode(MODES, media(fps=25)).code, 'Hp25')
+        self.assertEqual(choose_mode(MODES, media(3840, 2160, 30), prefer_high_refresh=True).code, '4k30')
+        note = mode_note(choose_mode(MODES, media(fps=25), prefer_high_refresh=True), media(fps=25))
+        self.assertIn('quadros repetidos 2×', note)
+
     def test_fps_and_geometry(self):
         for w, h, fps, code in [(1920, 800, 24000/1001, '23ps'),
                                (1920, 1080, 24, '24ps'),
