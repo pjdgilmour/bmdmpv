@@ -9,19 +9,24 @@ import time
 import tkinter as tk
 from unittest.mock import patch
 from PIL import Image, ImageStat
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+TEST_BASE = Path(__file__).resolve().parents[1]
+bootstrap = argparse.ArgumentParser(add_help=False)
+bootstrap.add_argument('--app-root', type=Path, default=TEST_BASE,
+                       help='Application directory; use /usr/lib/bmdmpv to test the installed package.')
+location, _ = bootstrap.parse_known_args()
+sys.path.insert(0, str(location.app_root))
 from gui.app import App, messagebox
 from gui.core import BASE
 from gui.youtube import BROWSERS
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(parents=[bootstrap])
 parser.add_argument('--url', default='https://www.youtube.com/watch?v=aqz-KE-bpKQ')
 parser.add_argument('--browser', default='', choices=list(BROWSERS.values()))
 parser.add_argument('--cpu', action='store_true')
 parser.add_argument('--mode', help='Force an HDMI mode code, e.g. Hp50.')
 parser.add_argument('--hold', type=float, default=0, help='Seconds to leave playback running for visual HDMI inspection.')
 args = parser.parse_args()
-results = BASE / 'test-results'
+results = TEST_BASE / 'test-results'
 results.mkdir(exist_ok=True)
 errors = []
 messagebox.showerror = lambda *a, **k: errors.append(a)

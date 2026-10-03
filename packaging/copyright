@@ -1,0 +1,20 @@
+bmdmpv: Python/Tk controller and Blackmagic DeckLink integration
+Copyright 2026 bmdmpv contributors
+License: LGPL-2.1-or-later (see source file notices)
+
+This package contains a modified mpv executable. The default build includes
+GPL features and is distributed under GPL-2.0-or-later. The accompanying
+mpv-Copyright file describes exceptions and individual component licenses.
+Copyright: mpv, MPlayer and mplayer2 contributors; see source file notices.
+
+Private libplacebo library (7.374.0): LGPL-2.1-or-later.
+Copyright: libplacebo contributors; see its corresponding source archive.
+
+DeckLink API dispatch code: Copyright (c) 2009 Blackmagic Design.
+See DeckLink-Dispatch-License for the original notice. The proprietary
+Desktop Video driver and the DeckLink SDK are not included in this package.
+
+The full GPL-2 and LGPL-2.1 texts are available on Debian systems under
+/usr/share/common-licenses/GPL-2 and /usr/share/common-licenses/LGPL-2.1.
+The build script produces a companion source archive with bmdmpv, modified
+mpv and the bundled libplacebo sources and their original notices.

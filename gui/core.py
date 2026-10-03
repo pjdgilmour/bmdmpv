@@ -17,7 +17,9 @@ from .library import HWDECS
 from .sources import is_remote
 
 BASE = Path(__file__).resolve().parent.parent
-MPV = BASE / 'build-mpv/mpv'
+# Source checkout and the private /usr/lib/bmdmpv installation share the GUI.
+MPV = BASE / 'mpv' if (BASE / 'mpv').is_file() else BASE / 'build-mpv/mpv'
+PROBE = BASE / 'decklink-probe' if (BASE / 'decklink-probe').is_file() else BASE / 'build/decklink-probe'
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,7 @@ class Media:
     title: str = ''
     ytdl_format: str = ''
     youtube_browser: str = ''
+    youtube_runtime: str = ''
 
 
 def run_text(args, timeout=15):
@@ -90,7 +93,7 @@ def parse_cards(text):
 
 
 def discover_cards():
-    return parse_cards(run_text([str(BASE / 'build/decklink-probe')]))
+    return parse_cards(run_text([str(PROBE)]))
 
 
 def parse_audio(text, backends):
@@ -244,10 +247,13 @@ def playback_args(media, card, mode, audio, framing='fit', volume=80, delay=0,
         from .youtube import extractor_options
         options = dict.fromkeys(('ignore-config', 'no-playlist', 'no-cache-dir'), '')
         options.update({'socket-timeout': '10', 'retries': '1', 'extractor-retries': '1', 'sub-langs': '-all'})
-        options.update(extractor_options(media.youtube_browser))
+        options.update(extractor_options(media.youtube_browser, runtime=media.youtube_runtime))
+        def quote_option(value):
+            # mpv's key/value list parser uses commas and quotes as delimiters.
+            return f'%{len(value.encode("utf-8"))}%{value}' if any(c in value for c in ',%\"\'') else value
         args += ['--ytdl=yes', '--ytdl-format=' + media.ytdl_format,
                  '--script-opts=ytdl_hook-ytdl_path=yt-dlp,ytdl_hook-all_formats=no',
-                 '--ytdl-raw-options=' + ','.join(k + '=' + v for k, v in options.items()),
+                 '--ytdl-raw-options=' + ','.join(k + '=' + quote_option(v) for k, v in options.items()),
                  '--osd-bar=no']
     return args + ['--', media.path]
 

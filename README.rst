@@ -5,6 +5,51 @@ Implementação de ``--vo=decklink`` e ``--ao=decklink`` para Linux, desenvolvid
 com uma Intensity Pro 4K, Desktop Video 16.4a1 e DeckLink SDK 16.0.
 O código está em ``mpv/``, copiado de ``/home/paulo/mpv-master/``.
 
+Pacote Debian
+-------------
+
+O pacote em ``dist/bmdmpv_0.1.1-1_amd64.deb`` destina-se ao **Debian 13
+(trixie), amd64**. Com o Desktop Video da Blackmagic já instalado::
+
+    sudo apt install ./dist/bmdmpv_0.1.1-1_amd64.deb
+
+Depois, abra **bmdmpv** pelo menu de aplicativos ou execute ``bmdmpv-gui``.
+O terminal também oferece ``mpv-decklink`` e seu autocompletar. Não é preciso
+compilar nem manter esta pasta para usar o pacote instalado. O aplicativo
+usa ``/usr/lib/bmdmpv`` e uma cópia privada de libplacebo; não substitui o mpv
+ou as bibliotecas do sistema. Perfis continuam em ``~/.config/bmdmpv``.
+
+Python/Tkinter permanece como GUI. O mpv em C/C++ executa a decodificação e
+a saída de áudio/vídeo; migrar a interface para Qt/GTK não é requisito para
+empacotamento ou desempenho desse processamento.
+
+As dependências incluem Python/Tk, FFmpeg, bibliotecas detectadas por
+``dpkg-shlibdeps`` e ``desktopvideo >= 16.0``. O driver proprietário precisa
+ser obtido da Blackmagic separadamente; o pacote não contém driver nem SDK.
+Para YouTube, use yt-dlp e um runtime JavaScript compatível, como
+Deno >= 2.3. A instalação de yt-dlp é recomendada pelo pacote; o runtime deve estar
+disponível conforme a documentação do YouTube abaixo. Cookies, arquivos de
+mídia e configurações pessoais não fazem parte do pacote.
+
+Para gerar novamente, após compilar os binários locais::
+
+    python3 scripts/build-deb.py
+    python3 tests/test-deb.py
+
+O empacotador exige ``dpkg-dev``, ``binutils``, ``desktop-file-utils`` e
+``patchelf`` (também aceita ``PATCHELF=/caminho/para/patchelf`` ou a cópia
+local em ``.deps/patchelf/usr/bin/patchelf``). Não usa sudo nem instala pacotes.
+Produz o ``.deb``, um arquivo ``_sources.tar.xz`` com os fontes modificados
+do projeto/mpv e libplacebo, e ``_SHA256SUMS``. O SDK permanece externo à
+compilação. ``--version 0.1.2-1`` permite gerar uma versão nova.
+
+``test-deb.py`` extrai o pacote em um diretório temporário e verifica caminhos,
+bibliotecas, lançadores, checksums e reprodução com saídas nulas. A instalação
+pode ser simulada com ``apt-get --simulate install ./dist/bmdmpv_0.1.1-1_amd64.deb``.
+Outras versões de Debian/Ubuntu precisam de compilação própria para suas
+versões de FFmpeg e bibliotecas. Para remover: ``sudo apt remove bmdmpv``;
+seus perfis e mídias são preservados.
+
 Interface gráfica
 -----------------
 
@@ -156,8 +201,18 @@ usam acesso sem cookies até você escolher um navegador.
 Somente o nome do navegador é salvo no perfil, sem exportar um arquivo de
 cookies. Para sessões autenticadas, o diagnóstico usa mensagens normais do
 mpv em vez do log de depuração, que pode incluir valores de cookies.
-O yt-dlp usa um runtime JavaScript disponível no PATH (Deno, Node, Bun ou
-QuickJS, nessa ordem) e pode baixar o componente EJS oficial do GitHub,
+Desde o pacote **0.1.1-1**, a GUI procura runtimes no PATH e também em
+``~/.local/bin``, ``~/.deno/bin`` e ``~/.bun/bin``, inclusive quando aberta
+pelo menu. Verifica a versão antes de escolher: Deno >= 2.3, Node >= 22,
+QuickJS compatível ou Bun 1.2.11–1.3.14 (nessa ordem). Uma versão antiga no
+PATH não impede localizar uma instalação compatível do usuário. Se nenhuma
+for encontrada, mostra uma mensagem específica antes de consultar o vídeo.
+O mesmo caminho absoluto é usado na análise e na reprodução pelo mpv.
+Não altera o PATH do sistema nem instala outro runtime automaticamente.
+Essa correção resolve o erro “Requested format is not available” observado
+ao abrir pelo menu sem o Deno de ``~/.local/bin`` no PATH.
+
+O yt-dlp pode baixar o componente EJS oficial do GitHub,
 como no downmedia. Consulte a `documentação do EJS
 <https://github.com/yt-dlp/yt-dlp/wiki/EJS>`_.
 
@@ -416,6 +471,7 @@ Testes sem dispositivo::
     python3 tests/test_gui.py
     python3 tests/test_library.py
     python3 tests/test_youtube.py
+    python3 tests/test_js_runtime.py
     python3 tests/test-youtube-ipc.py
     python3 tests/test-youtube-ipc.py --with-cookies
 
@@ -433,6 +489,8 @@ playlist mista e cancelamento com encerramento do extrator. O teste adicional
 ``test-youtube-ipc.py`` usa um extrator simulado e streams HTTP locais separados
 para exercitar o ``ytdl_hook`` real, áudio/vídeo, pausa, busca e encerramento.
 Requer FFmpeg, Lua habilitada no mpv e sockets locais; não acessa o YouTube.
+Os cinco testes de runtime cobrem o PATH reduzido do menu, instalações do
+usuário, versões antigas, fallback, ausência e falhas de execução.
 A variante ``--with-cookies`` usa cookies simulados e verifica que seus
 valores não aparecem no diagnóstico; não lê cookies reais do navegador.
 

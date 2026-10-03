@@ -9,6 +9,7 @@ import subprocess
 import threading
 import time
 from .sources import youtube_url
+from .js_runtime import find_runtime
 
 # Keep HDR out of the SDR-only DeckLink output. Choose actual selected formats,
 # not the original upload dimensions. mpv re-extracts these format IDs on play.
@@ -18,15 +19,12 @@ BROWSERS = {'Sem cookies': '', 'Firefox': 'firefox', 'Chrome': 'chrome',
             'Opera': 'opera', 'Vivaldi': 'vivaldi'}
 
 
-def extractor_options(browser=''):
+def extractor_options(browser='', runtime=None):
     """Share authentication and JS setup between metadata and mpv's ytdl hook."""
     if browser not in BROWSERS.values():
         raise ValueError('Navegador de cookies inválido.')
-    options = {'remote-components': 'ejs:github'}
-    for runtime, executable in [('deno', 'deno'), ('node', 'node'), ('bun', 'bun'), ('quickjs', 'qjs')]:
-        if shutil.which(executable):
-            options['js-runtimes'] = runtime
-            break
+    options = {'remote-components': 'ejs:github',
+               'js-runtimes': runtime or find_runtime()}
     if browser:
         options['cookies-from-browser'] = browser
     return options
@@ -36,7 +34,7 @@ class ProbeCancelled(Exception):
     pass
 
 
-def extract(url, cancel=None, timeout=60, browser=''):
+def extract(url, cancel=None, timeout=60, browser='', options=None):
     url = youtube_url(url)
     executable = shutil.which('yt-dlp')
     if not executable:
@@ -47,8 +45,8 @@ def extract(url, cancel=None, timeout=60, browser=''):
     command = [executable, '--ignore-config', '--no-playlist', '--skip-download',
                '--no-cache-dir', '--no-warnings', '--socket-timeout', '10', '--retries', '1',
                '--extractor-retries', '1', '--dump-single-json', '--format', FORMAT]
-    for key, value in extractor_options(browser).items():
-        command += ['--' + key, value]
+    for key, value in (options if options is not None else extractor_options(browser)).items():
+        command += ['--' + key] + ([value] if value else [])
     command += ['--', url]
     proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, errors='replace', start_new_session=True)
@@ -110,6 +108,8 @@ def parse_youtube(url, data):
 
 
 def probe_youtube(url, cancel=None, browser=''):
-    media = parse_youtube(url, extract(url, cancel, browser=browser))
+    options = extractor_options(browser)
+    media = parse_youtube(url, extract(url, cancel, browser=browser, options=options))
     media.youtube_browser = browser
+    media.youtube_runtime = options['js-runtimes']
     return media

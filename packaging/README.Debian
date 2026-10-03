@@ -1,0 +1,39 @@
+bmdmpv for Debian 13 (trixie), amd64
+===================================
+
+Install the Blackmagic Desktop Video driver (16.x compatible with SDK 16)
+from Blackmagic first. It is an external dependency, not bundled here.
+
+Install the local package with:
+    sudo apt install ./bmdmpv_0.1.1-1_amd64.deb
+
+Open bmdmpv from the application menu or run bmdmpv-gui. The command-line
+wrapper is mpv-decklink; mpv-decklink --list-modes enumerates HDMI modes.
+The system mpv is not replaced. Do not run the GUI as root.
+
+YouTube requires yt-dlp and a supported JavaScript runtime. The app checks
+versions and searches PATH, ~/.local/bin, ~/.deno/bin and ~/.bun/bin, so a
+desktop launcher can find user-installed runtimes without shell setup.
+Deno >= 2.3 is preferred; Node >= 22 is another option. The absolute runtime
+path is shared by metadata extraction and playback. See upstream EJS setup:
+https://github.com/yt-dlp/yt-dlp/wiki/EJS
+Select the logged-in browser under Cookies do YouTube. No cookies, browser
+profiles, media files or user settings are included in the package.
+
+Settings remain in ~/.config/bmdmpv (or $XDG_CONFIG_HOME/bmdmpv). Package
+removal does not delete personal settings, media or playlists.
+
+This binary targets Debian 13 amd64. Other distributions/releases require
+their own builds against their FFmpeg and system-library versions.
+
+Build again from the checkout:
+    ./build-probe.sh
+    ./build-mpv.sh
+    python3 scripts/build-deb.py
+
+Packaging requires dpkg-dev, binutils, patchelf and desktop-file-utils.
+PATCHELF can specify a locally extracted patchelf binary. There are no
+maintainer scripts, privileged build steps or automatic downloads in the
+packaging script. Source build prerequisites are described in README.rst;
+the DeckLink SDK stays external. The companion source archive also includes
+libplacebo in third_party/libplacebo and the effective Meson build options.

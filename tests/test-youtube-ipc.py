@@ -45,11 +45,13 @@ with tempfile.TemporaryDirectory() as tmp:
                 {'format_id': '140', 'vcodec': 'none', 'acodec': 'aac',
                  'protocol': 'http', 'url': prefix + 'audio.m4a'}]}
     fake = directory / 'yt-dlp'
-    check = ''
+    runtime = 'deno:/fixture/espaço, com vírgula/deno'
+    check = ("assert '--js-runtimes' in sys.argv\n"
+             "assert sys.argv[sys.argv.index('--js-runtimes') + 1] == " + repr(runtime) + '\n')
     if browser:
         for fmt in data['requested_formats']:
             fmt['cookies'] = 'fixture=FAKE_COOKIE_MUST_NOT_BE_LOGGED; Domain=127.0.0.1; Path=/'
-        check = ("assert '--cookies-from-browser' in sys.argv\n"
+        check += ("assert '--cookies-from-browser' in sys.argv\n"
                  "assert sys.argv[sys.argv.index('--cookies-from-browser') + 1] == 'firefox'\n"
                  "assert '--remote-components' in sys.argv\n")
     fake.write_text('#!/usr/bin/env python3\nimport sys\n' + check + 'print(' + repr(json.dumps(data)) + ')\n')
@@ -68,7 +70,8 @@ with tempfile.TemporaryDirectory() as tmp:
                 return value
         raise AssertionError('IPC timeout')
     try:
-        with patch.dict(os.environ, PATH=tmp + os.pathsep + os.environ.get('PATH', '')):
+        with patch.dict(os.environ, PATH=tmp + os.pathsep + os.environ.get('PATH', '')), \
+                patch('gui.youtube.find_runtime', return_value=runtime):
             media = probe_media('https://youtu.be/aqz-KE-bpKQ', browser=browser)
             args = playback_args(media, Card(0, 'fixture'), Mode('Hp30', 1920, 1080, 30, '1080p30'), Audio('fixture', 'decklink'))
             args = [a.replace('--vo=decklink', '--vo=null').replace('--ao=decklink', '--ao=null') for a in args]

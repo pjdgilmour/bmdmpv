@@ -2,4 +2,5 @@
 /build/
 /build-*/
 /test-results/
+/dist/
 __pycache__/

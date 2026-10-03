@@ -1,7 +1,13 @@
 #!/bin/sh
 set -eu
-base=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-if [ "${1:-}" = '--list-modes' ]; then
-    exec "$base/build/decklink-probe"
+base=$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")" && pwd)
+player="$base/build-mpv/mpv"
+probe="$base/build/decklink-probe"
+if [ -f "$base/mpv" ]; then
+    player="$base/mpv"
+    probe="$base/decklink-probe"
 fi
-exec "$base/build-mpv/mpv" --no-config --vo=decklink --ao=decklink --hwdec=no "$@"
+if [ "${1:-}" = '--list-modes' ]; then
+    exec "$probe"
+fi
+exec "$player" --no-config --vo=decklink --ao=decklink --hwdec=no "$@"

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=bmdmpv
+GenericName=Blackmagic HDMI Player
+GenericName[pt_BR]=Player HDMI Blackmagic
+Comment=Play files and YouTube videos through Blackmagic DeckLink or Intensity
+Comment[pt_BR]=Reproduza arquivos e vídeos do YouTube pela Blackmagic DeckLink ou Intensity
+Exec=bmdmpv-gui %u
+TryExec=bmdmpv-gui
+Icon=bmdmpv
+Terminal=false
+Categories=AudioVideo;Player;Video;
+MimeType=video/mp4;video/x-matroska;video/webm;video/quicktime;audio/mpeg;audio/flac;audio/x-wav;audio/x-mpegurl;application/vnd.apple.mpegurl;
+StartupNotify=false

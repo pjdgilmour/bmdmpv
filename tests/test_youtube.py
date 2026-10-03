@@ -25,6 +25,11 @@ DATA = {'_type': 'video', 'title': 'Vídeo de teste', 'duration': 120, 'width': 
 
 
 class YouTubeTest(unittest.TestCase):
+    def setUp(self):
+        p = patch('gui.youtube.find_runtime', return_value='deno:/fixture/deno')
+        p.start()
+        self.addCleanup(p.stop)
+
     def test_links_normalization_and_rejected_sources(self):
         for url in [URL + '&list=ignored&t=20', 'https://youtu.be/aqz-KE-bpKQ?si=tracking',
                     'https://m.youtube.com/shorts/aqz-KE-bpKQ', 'https://www.youtube.com/embed/aqz-KE-bpKQ']:
@@ -74,7 +79,7 @@ class YouTubeTest(unittest.TestCase):
     def test_probe_dispatch_and_missing_extractor(self):
         with patch('gui.youtube.extract', return_value=DATA) as resolve:
             self.assertEqual(probe_media(URL).path, URL)
-            resolve.assert_called_once_with(URL, None, browser='')
+            resolve.assert_called_once_with(URL, None, browser='', options=extractor_options())
         with patch('gui.youtube.shutil.which', return_value=None), self.assertRaisesRegex(ValueError, 'yt-dlp'):
             extract(URL)
 
@@ -111,13 +116,15 @@ class YouTubeTest(unittest.TestCase):
     def test_browser_authentication_reaches_probe_and_player(self):
         with patch('gui.youtube.extract', return_value=DATA) as resolve:
             media = probe_media(URL, browser='firefox')
-            resolve.assert_called_once_with(URL, None, browser='firefox')
-        args = playback_args(media, Card(0, 'Intensity'), Mode('Hp30', 1920, 1080, 30, '1080p30'), Audio('HDMI', 'decklink'))
+            resolve.assert_called_once_with(URL, None, browser='firefox', options=extractor_options('firefox'))
+        with patch('gui.youtube.find_runtime', side_effect=AssertionError('must reuse probe runtime')):
+            args = playback_args(media, Card(0, 'Intensity'), Mode('Hp30', 1920, 1080, 30, '1080p30'), Audio('HDMI', 'decklink'))
         self.assertIn('cookies-from-browser=firefox', ' '.join(args))
         self.assertIn('remote-components=ejs:github', ' '.join(args))
-        with patch('gui.youtube.shutil.which', side_effect=lambda name: '/bin/node' if name == 'node' else None):
+        self.assertIn('js-runtimes=deno:/fixture/deno', ' '.join(args))
+        with patch('gui.youtube.find_runtime', return_value='node:/bin/node'):
             self.assertEqual(extractor_options('chrome'), {'cookies-from-browser': 'chrome',
-                             'remote-components': 'ejs:github', 'js-runtimes': 'node'})
+                             'remote-components': 'ejs:github', 'js-runtimes': 'node:/bin/node'})
         self.assertNotIn('cookies-from-browser', extractor_options())
         with self.assertRaises(ValueError):
             extractor_options('firefox,exec=bad')
