@@ -5,6 +5,148 @@ Implementação de ``--vo=decklink`` e ``--ao=decklink`` para Linux, desenvolvid
 com uma Intensity Pro 4K, Desktop Video 16.4a1 e DeckLink SDK 16.0.
 O código está em ``mpv/``, copiado de ``/home/paulo/mpv-master/``.
 
+Interface gráfica
+-----------------
+
+Para abrir o player no desktop::
+
+    cd /home/paulo/bmdmpv
+    ./bmdmpv-gui
+
+Também é possível abrir um arquivo pela linha de comando, sem iniciar sua
+reprodução automaticamente::
+
+    ./bmdmpv-gui /caminho/video.mkv
+
+1. Clique em **Adicionar arquivos**. A GUI usa ``ffprobe`` para consultar resolução,
+   proporção, taxa de quadros, duração e presença de áudio.
+2. Selecione a placa e a resolução de saída. **Automático · priorizar FPS**
+   procura entre os modos HDMI progressivos realmente enumerados pelo SDK.
+   Há opções para forçar 720p, 1080p ou 2160p e um **Modo manual** para escolher
+   exatamente a resolução e frequência desejadas.
+3. Em **Enviar áudio para**, escolha HDMI da Blackmagic, a saída padrão do
+   sistema (PipeWire ou PulseAudio), uma interface específica ou **Sem áudio**.
+4. Clique em **Reproduzir**. Os controles permitem pausar, buscar na linha do
+   tempo, avançar/recuar 10 segundos, ajustar volume, silenciar, repetir e
+   aplicar atraso do áudio. Um atraso positivo retarda o áudio; negativo,
+   retarda o vídeo. **Parar** libera a placa e permite trocar arquivo e saídas.
+
+A detecção automática distingue 23,976 de 24 fps e 29,97 de 30 fps. Prioriza
+a mesma frequência; depois, múltiplos inteiros; por último, a frequência
+mais próxima. Dentro desses critérios, procura a resolução adequada ao
+arquivo. Por exemplo, 720p29,97 sugere 1080p29,97 e UHD60 sugere 1080p60
+nesta Intensity. Ao forçar 720p para um arquivo de 29,97 fps, seleciona
+720p59,94 e informa a adaptação de cadência. Material entrelaçado identificado
+pelo ``ffprobe`` ativa o desentrelaçamento do mpv e considera a taxa de campos.
+Arquivos com taxa variável usam a taxa média informada pelo ``ffprobe``;
+a sugestão não garante reprodução sem repetição/descarte de quadros.
+O monitor conectado ainda precisa aceitar o modo selecionado.
+
+O **Enquadramento** oferece ajustar com barras preservando a imagem,
+preencher com corte das bordas e esticar sem preservar a proporção.
+Up/downscale é feito pelo mpv na CPU. As `especificações da Intensity Pro 4K
+<https://www.blackmagicdesign.com/uk/developer/products/capture-and-playback/techspecs/W-DLK-25>`_
+descrevem o downscale durante reprodução como software e o upscale para
+captura. A GUI não ativa conversões de hardware do SDK nem altera
+permanentemente a configuração da placa.
+
+**Atualizar saídas** consulta novamente a placa e as interfaces de áudio.
+Ao terminar o último arquivo sem repetição, o player mantém o último quadro
+e oferece **Reiniciar**;
+fechar a janela encerra seu processo de reprodução e libera a placa.
+**Diagnóstico** permite copiar o comando e salvar o log da última sessão
+depois de parar. ``Ctrl+O`` adiciona arquivos e ``Esc`` para a reprodução.
+
+A GUI usa Python 3.10+ com Tkinter (``python3-tk`` no Debian), ``ffprobe``
+e os binários locais já compilados. Essas dependências já estão disponíveis
+nesta máquina. Não requer um servidor web ou instalação de bibliotecas via pip.
+A imagem é enviada à HDMI; não há preview de vídeo no desktop. As limitações SDR/8 bits
+do backend continuam válidas; HDR/BT.2020/Dolby Vision identificados na
+análise são bloqueados antes de iniciar a saída.
+
+Playlists e perfis
+-----------------
+
+**Adicionar arquivos** permite selecionar vários arquivos de uma vez e os
+acrescenta à lista atual. O primeiro item é analisado, mas só começa ao clicar
+em **Reproduzir**. O botão **Playlist (N)** abre a lista: remova itens, altere
+a ordem com **Subir/Descer**, ou dê duplo clique para reproduzir um item.
+Pare a reprodução para editar a lista. **Anterior/Próximo** navegam entre os
+itens; durante a reprodução, iniciam o item escolhido. Com o player parado,
+apenas o selecionam para análise.
+
+Ao final de cada arquivo, a GUI passa ao próximo e recalcula o modo HDMI
+quando a resolução está em automático. A saída é encerrada e reaberta por
+item, inclusive para alterar a frequência: há uma interrupção entre arquivos,
+e o monitor pode levar algum tempo para sincronizar novamente. Não é uma
+playlist sem intervalos. Arquivos ausentes, inválidos ou HDR interrompem
+a sequência, sem serem pulados silenciosamente.
+
+O seletor de repetição oferece **Não repetir**, **Repetir arquivo** e
+**Repetir playlist**. Repetir arquivo mantém somente o item atual em loop;
+repetir playlist volta ao primeiro após o último. **Parar** também cancela
+um avanço automático que esteja sendo preparado.
+
+**Salvar lista** grava M3U8 em UTF-8 com caminhos absolutos. **Abrir lista**
+substitui a lista atual; aceita M3U/M3U8 em UTF-8, comentários ``#EXTINF`` e
+caminhos relativos ao diretório da playlist. Somente arquivos locais são
+aceitos. Também se pode abrir a playlist pelo terminal::
+
+    ./bmdmpv-gui /caminho/sessao.m3u8
+
+Use **Salvar perfil** para guardar placa, resolução/modo HDMI, enquadramento,
+saída de áudio, volume, mute, atraso, repetição e opção de decodificação.
+Escolha um nome existente para atualizá-lo. Para recuperar as opções,
+selecione o perfil e clique em **Aplicar**, com a reprodução parada.
+**Excluir** remove o perfil escolhido. A playlist é salva separadamente;
+o perfil não contém os arquivos e não inicia reprodução.
+
+Os perfis ficam em ``$XDG_CONFIG_HOME/bmdmpv/profiles.json`` ou, normalmente,
+``~/.config/bmdmpv/profiles.json``. A gravação é atômica; arquivos inválidos
+são preservados e o erro é mostrado ao tentar salvar/aplicar. Nenhum perfil
+é aplicado automaticamente ao abrir a GUI. Uma interface de áudio ausente
+impede aplicar o perfil inteiro, sem redirecionamento silencioso. A placa é
+identificada pelo índice e nome; se o índice mudou, um nome único pode ser
+usado para localizá-la novamente.
+
+Decodificação acelerada
+----------------------
+
+A Intensity funciona como saída de quadros já decodificados: o caminho
+``IDeckLinkOutput`` do SDK usa buffers de imagem, não fornece um decodificador
+de arquivos H.264/HEVC para este uso. A decodificação pode ficar na CPU ou
+na GPU do computador, antes de enviar a imagem à placa.
+
+O seletor **Decodificação** oferece:
+
+* **CPU**: mantém o comportamento anterior (``--hwdec=no``).
+* **GPU · automática**: ``--hwdec=auto-copy``; tenta métodos compatíveis e
+  usa CPU quando o codec, driver ou dispositivo não permitem aceleração.
+* **NVIDIA · NVDEC**: ``--hwdec=nvdec-copy``.
+* **Intel / AMD · VA-API**: ``--hwdec=vaapi-copy``; requer hardware e driver
+  VA-API compatíveis. Esta opção não foi validada fisicamente nesta máquina NVIDIA.
+
+A GUI mostra o decodificador **realmente usado**, consultando a propriedade
+``hwdec-current`` do mpv. Escolher GPU não significa que todos os arquivos
+serão acelerados. Os perfis guardam a opção solicitada, e o resultado é
+consultado novamente a cada arquivo. Nesta máquina, com RTX A4500 e driver
+615.71.09, H.264 e HEVC SDR 8 bits foram decodificados por ``nvdec-copy`` com
+``--vo=decklink`` e áudio HDMI. Um clipe MPEG-4 fora da lista padrão de codecs
+acelerados do mpv foi reproduzido pela CPU e identificado como tal na GUI.
+
+Os modos com sufixo ``-copy`` devolvem os quadros da GPU à RAM, permitindo
+o processamento por CPU e o uso deste VO. Essa cópia tem custo; o upscale,
+downscale, conversão para UYVY e OSD continuam na CPU. Não há transferência
+direta GPU → Intensity nesta implementação nem garantia de ganho de desempenho
+para qualquer arquivo. Veja a `documentação de hardware decoding do mpv
+<https://mpv.io/manual/master/#options-hwdec>`_. A aceleração não remove as
+restrições SDR/8 bits da saída.
+
+Também funciona no launcher de terminal, sem recompilar::
+
+    ./mpv-decklink --hwdec=auto-copy --vo-decklink-mode=Hp29 video-h264.mp4
+    ./mpv-decklink --hwdec=nvdec-copy --vo-decklink-mode=Hp29 video-hevc.mp4
+
 Uso imediato
 ------------
 
@@ -201,6 +343,26 @@ Testes sem dispositivo::
 
     python3 tests/run-bridge-tests.py
     meson test -C build-mpv --print-errorlogs
+    python3 tests/test_gui.py
+    python3 tests/test_library.py
+
+Os nove testes da GUI verificam seleção de modos, taxas fracionárias,
+resolução forçada, metadados, seleção de áudio, argumentos sem shell e
+seleção de decodificação com cópia para RAM, além de controle IPC com o mpv
+real usando saídas nulas. O teste IPC precisa de
+permissão para sockets Unix locais, mas não acessa a placa nem emite som.
+Os cinco testes de persistência cobrem ordem da playlist, M3U8, perfis,
+validação de dados e preservação do arquivo anterior em falhas de gravação.
+
+Com uma sessão gráfica, sem acessar a placa::
+
+    python3 tests/test_gui_state.py
+
+Esses seis testes usam player e dispositivos simulados para verificar
+avanço, repetição, troca de formato, cancelamento durante análise/transição,
+resultados atrasados de consultas, arquivos inválidos e aplicação atômica
+de perfis com interface de áudio ausente. São 20 testes ao todo nesses três
+arquivos.
 
 A ponte é testada com interfaces simuladas geradas a partir dos headers reais:
 FPS fracionário, seleção de modos, dispositivo ausente, inicialização parcial,
@@ -215,6 +377,21 @@ Testes físicos explícitos (enviam vídeo pela HDMI; requerem FFmpeg e Pillow):
     python3 tests/test-hardware.py --mode Hp29
     python3 tests/test-hardware.py --mode 4k29
     python3 tests/test-audio-hardware.py
+    python3 tests/test-gui-hardware.py
+    python3 tests/test-playlist-hardware.py
+
+O teste físico da GUI também requer uma sessão gráfica com Tkinter e Pillow.
+Ele abre a janela e reproduz um padrão com tom baixo: verifica áudio HDMI
+e PipeWire, saída 1080p/720p, os três enquadramentos, pausa, busca, mute,
+atraso do áudio, fim de arquivo/reinício e encerramento durante reprodução.
+Logs e screenshots são gravados em ``test-results/``. Os screenshots de
+vídeo verificam o buffer enviado; não são uma captura física da HDMI.
+
+O teste de playlist requer GPU NVIDIA/NVDEC e gera clipes H.264/HEVC SDR:
+verifica decodificação real por GPU com áudio HDMI silenciado, transição
+automática 1080p29,97 → 720p50 → 1080p29,97, repetição da lista, perfis e
+reprodução pela CPU de um clipe não elegível para aceleração automática.
+Os logs ficam em ``test-results/playlist-gpu-*.log``.
 
 Esses testes passaram nesta máquina em 1080p29,97 e 2160p29,97: abertura,
 envio pelo SDK, FPS reportado, proporção 4:3 com barras, pausa, busca exata,
@@ -240,6 +417,12 @@ a habilitação desses backends.
 
 Arquitetura
 -----------
+
+``gui/app.py`` controla a interface Tk e a sequência da playlist; cada item
+é analisado antes de criar um processo mpv com seu próprio modo de saída.
+``gui/core.py`` faz descoberta, escolha de modo e IPC em threads separadas.
+``gui/library.py`` contém playlist/M3U8 e persistência de perfis;
+``gui/profiles.py`` e ``gui/playlist_window.py`` implementam seus controles.
 
 ``mpv/video/out/vo_decklink.c`` implementa o VO e usa o scaler/OSD do mpv.
 ``decklink_bridge.cpp`` isola a API C++/COM do SDK atrás de uma interface C,
