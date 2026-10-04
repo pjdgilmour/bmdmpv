@@ -5,7 +5,7 @@ Install the Blackmagic Desktop Video driver (16.x compatible with SDK 16)
 from Blackmagic first. It is an external dependency, not bundled here.
 
 Install the local package with:
-    sudo apt install ./bmdmpv_0.1.1-1_amd64.deb
+    sudo apt install ./bmdmpv_0.1.2-1_amd64.deb
 
 Open bmdmpv from the application menu or run bmdmpv-gui. The command-line
 wrapper is mpv-decklink; mpv-decklink --list-modes enumerates HDMI modes.

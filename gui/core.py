@@ -246,7 +246,7 @@ def playback_args(media, card, mode, audio, framing='fit', volume=80, delay=0,
     if media.ytdl_format:
         from .youtube import extractor_options
         options = dict.fromkeys(('ignore-config', 'no-playlist', 'no-cache-dir'), '')
-        options.update({'socket-timeout': '10', 'retries': '1', 'extractor-retries': '1', 'sub-langs': '-all'})
+        options.update({'socket-timeout': '10', 'retries': '1', 'extractor-retries': '1', 'sub-langs': 'all'})
         options.update(extractor_options(media.youtube_browser, runtime=media.youtube_runtime))
         def quote_option(value):
             # mpv's key/value list parser uses commas and quotes as delimiters.
@@ -261,7 +261,8 @@ def playback_args(media, card, mode, audio, framing='fit', volume=80, delay=0,
 class Player:
     """One owned child process. All I/O runs off the UI thread; events are queued."""
     PROPERTIES = ('time-pos', 'duration', 'pause', 'eof-reached', 'volume', 'mute',
-                  'audio-delay', 'current-ao', 'current-vo', 'hwdec-current')
+                  'audio-delay', 'current-ao', 'current-vo', 'hwdec-current',
+                  'track-list', 'aid', 'sid')
 
     def __init__(self, args, events):
         self.args = args

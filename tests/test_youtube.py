@@ -50,6 +50,7 @@ class YouTubeTest(unittest.TestCase):
         args = playback_args(media, Card(0, 'Intensity'), Mode('Hp30', 1920, 1080, 30, '1080p30'), Audio('HDMI', 'decklink'))
         self.assertIn('--ytdl-format=137+140', args)
         self.assertIn('--ytdl=yes', args)
+        self.assertIn('sub-langs=all', ' '.join(args))
         self.assertIn('ytdl_hook-all_formats=no', ' '.join(args))
         self.assertEqual(args[-2:], ['--', URL])
         self.assertNotIn('temporary-video', ' '.join(args))

@@ -15,6 +15,7 @@ from .playlist_window import PlaylistWindow
 from .profiles import Profiles
 from .sources import is_remote, normalize_source, youtube_url
 from .youtube import BROWSERS, ProbeCancelled
+from .tracks import Tracks
 
 TARGETS = {'Automático · priorizar FPS': None, 'HD · 720p': 720,
            'Full HD · 1080p': 1080, 'Ultra HD · 2160p': 2160, 'Modo manual': 'manual'}
@@ -224,6 +225,7 @@ class App:
         self.delay_spin.bind('<Return>', lambda e: self.set_delay())
         ttk.Label(audio, text='Valor positivo atrasa o áudio.\nA saída padrão acompanha o sistema.',
                   style='Muted.TLabel', wraplength=390).pack(anchor='w', pady=(8, 0))
+        self.tracks = Tracks(audio, self)
         summary = ttk.Frame(outer, style='Card.TFrame', padding=(18, 12))
         summary.pack(fill='x', pady=(0, 12))
         ttk.Label(summary, textvariable=self.note, style='Note.TLabel', wraplength=880).pack(anchor='w')
@@ -487,6 +489,7 @@ class App:
         self.diagnostics = self.last_command + '\n\n'
         self.player = Player(args, self.events)
         self.connected = False
+        self.tracks.reset()
         self.eof = False
         self.paused = False
         self.position = 0
@@ -501,6 +504,7 @@ class App:
         self.player.start()
 
     def lock(self, playing):
+        self.tracks.refresh()
         for widget in self.widgets_locked:
             if isinstance(widget, ttk.Combobox):
                 widget.configure(state='disabled' if playing else 'readonly')
@@ -571,6 +575,8 @@ class App:
         self.root.destroy()
 
     def property_changed(self, name, value):
+        if self.tracks.property_changed(name, value):
+            return
         if value is None:
             return
         if name == 'duration':
@@ -622,6 +628,7 @@ class App:
                 elif kind == 'property':
                     self.property_changed(*value)
                 elif kind == 'command-error':
+                    self.tracks.refresh()
                     self.diagnostics += '\nComando IPC: ' + value
                     self.status.set('Comando não aplicado: ' + value)
                 elif kind == 'finished':
@@ -629,6 +636,7 @@ class App:
                     error = value['error'] or (f"mpv encerrou com código {value['code']}." if value['code'] else '')
                     self.player = None
                     self.connected = False
+                    self.tracks.reset()
                     transition, self.switch_to = self.switch_to, None
                     self.lock(False)
                     self.play_button.configure(text='Reproduzir')

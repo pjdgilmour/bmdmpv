@@ -223,6 +223,35 @@ class ControllerTest(unittest.TestCase):
         self.assertFalse(self.app.busy())
         self.assertEqual(self.app.status.get(), 'Consulta cancelada')
 
+    def test_track_ids_selection_updates_reset_and_stale_events(self):
+        player = self.start_playlist()
+        tracks = [{'type': 'video', 'id': 1},
+                  {'type': 'audio', 'id': 3, 'lang': 'por', 'title': 'Português', 'selected': True},
+                  {'type': 'audio', 'id': 7, 'lang': 'eng', 'title': 'English'},
+                  {'type': 'sub', 'id': 4, 'lang': 'por', 'codec': 'subrip'}]
+        player.emit('property', ('track-list', tracks))
+        self.wait(lambda: self.app.tracks.ids['audio'] == [False, 3, 7])
+        audio = self.app.tracks.widgets['audio']
+        subtitles = self.app.tracks.widgets['sub']
+        self.assertEqual(audio.current(), 1)
+        audio.current(2)
+        self.app.tracks.choose('audio')
+        self.assertEqual(player.commands[-1], ('set_property', 'aid', 7))
+        player.emit('property', ('aid', 7))
+        subtitles.current(1)
+        self.app.tracks.choose('sub')
+        self.assertEqual(player.commands[-1], ('set_property', 'sid', 4))
+        player.emit('property', ('sid', False))
+        self.wait(lambda: self.app.tracks.selected['audio'] == 7)
+        self.assertEqual(subtitles.current(), 0)
+        self.app.stop()
+        self.wait(lambda: self.app.player is None)
+        self.assertEqual(str(audio['state']), 'disabled')
+        self.assertEqual(self.app.tracks.tracks, [])
+        player.emit('property', ('track-list', tracks))
+        self.root.update()
+        self.assertEqual(self.app.tracks.tracks, [])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

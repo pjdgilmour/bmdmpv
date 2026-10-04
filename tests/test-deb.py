@@ -10,7 +10,7 @@ import tempfile
 
 BASE = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('package', nargs='?', type=Path, default=BASE / 'dist/bmdmpv_0.1.1-1_amd64.deb')
+parser.add_argument('package', nargs='?', type=Path, default=BASE / 'dist/bmdmpv_0.1.2-1_amd64.deb')
 parser.add_argument('--gui', action='store_true', help='Also initialize the installed Tk GUI (requires DISPLAY).')
 args = parser.parse_args()
 env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')

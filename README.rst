@@ -8,10 +8,10 @@ O código está em ``mpv/``, copiado de ``/home/paulo/mpv-master/``.
 Pacote Debian
 -------------
 
-O pacote em ``dist/bmdmpv_0.1.1-1_amd64.deb`` destina-se ao **Debian 13
+O pacote em ``dist/bmdmpv_0.1.2-1_amd64.deb`` destina-se ao **Debian 13
 (trixie), amd64**. Com o Desktop Video da Blackmagic já instalado::
 
-    sudo apt install ./dist/bmdmpv_0.1.1-1_amd64.deb
+    sudo apt install ./dist/bmdmpv_0.1.2-1_amd64.deb
 
 Depois, abra **bmdmpv** pelo menu de aplicativos ou execute ``bmdmpv-gui``.
 O terminal também oferece ``mpv-decklink`` e seu autocompletar. Não é preciso
@@ -41,11 +41,11 @@ O empacotador exige ``dpkg-dev``, ``binutils``, ``desktop-file-utils`` e
 local em ``.deps/patchelf/usr/bin/patchelf``). Não usa sudo nem instala pacotes.
 Produz o ``.deb``, um arquivo ``_sources.tar.xz`` com os fontes modificados
 do projeto/mpv e libplacebo, e ``_SHA256SUMS``. O SDK permanece externo à
-compilação. ``--version 0.1.2-1`` permite gerar uma versão nova.
+compilação. ``--version 0.1.3-1`` permite gerar uma versão nova.
 
 ``test-deb.py`` extrai o pacote em um diretório temporário e verifica caminhos,
 bibliotecas, lançadores, checksums e reprodução com saídas nulas. A instalação
-pode ser simulada com ``apt-get --simulate install ./dist/bmdmpv_0.1.1-1_amd64.deb``.
+pode ser simulada com ``apt-get --simulate install ./dist/bmdmpv_0.1.2-1_amd64.deb``.
 Outras versões de Debian/Ubuntu precisam de compilação própria para suas
 versões de FFmpeg e bibliotecas. Para remover: ``sudo apt remove bmdmpv``;
 seus perfis e mídias são preservados.
@@ -105,6 +105,22 @@ Up/downscale é feito pelo mpv na CPU. As `especificações da Intensity Pro 4K
 descrevem o downscale durante reprodução como software e o upscale para
 captura. A GUI não ativa conversões de hardware do SDK nem altera
 permanentemente a configuração da placa.
+
+Durante a reprodução, o painel **Áudio** oferece **Trilha de áudio** e
+**Legenda**, com idioma, título e codec quando informados pelo arquivo.
+Os seletores mostram a seleção real do mpv e permitem trocar as trilhas
+durante reprodução ou pausa, sem reiniciar o player. **Sem áudio** desativa
+a trilha de áudio; **Desativada** desliga a legenda. A rota **Enviar áudio
+para** continua sendo a escolha da interface de saída.
+
+As listas ficam disponíveis depois que o mpv abre o arquivo e são limpas
+ao parar ou trocar de item. Arquivos sem legendas mostram **Sem legendas
+disponíveis**. IDs de trilha pertencem ao arquivo atual e não são salvos
+nos perfis. Legendas selecionadas são desenhadas na imagem enviada à HDMI.
+No YouTube, o mpv também recebe as legendas publicadas disponibilizadas pelo
+yt-dlp; os seletores apresentam apenas as trilhas que o player abriu. A
+extração atual continua escolhendo uma faixa de áudio do YouTube, sem
+importar todas as dublagens nem solicitar legendas geradas automaticamente.
 
 **Atualizar saídas** consulta novamente a placa e as interfaces de áudio.
 Ao terminar o último arquivo sem repetição, o player mantém o último quadro
@@ -498,12 +514,23 @@ Com uma sessão gráfica, sem acessar a placa::
 
     python3 tests/test_gui_state.py
 
-Esses oito testes usam player e dispositivos simulados para verificar
+Esses nove testes usam player e dispositivos simulados para verificar
 avanço, repetição, troca de formato, cancelamento durante análise/transição,
 resultados atrasados de consultas, arquivos inválidos e aplicação atômica
 de perfis com interface de áudio ausente, além da inclusão e cancelamento
-de consultas do YouTube e a preferência por 50/60 Hz. São 31 testes unitários nos quatro arquivos
+de consultas do YouTube, a preferência por 50/60 Hz e seleção de trilhas por
+ID (inclusive descarte de eventos antigos). São 32 testes unitários nos quatro arquivos
 ``test_gui.py``, ``test_library.py``, ``test_youtube.py`` e ``test_gui_state.py``.
+
+Teste de trilhas com GUI e mpv reais, usando duas trilhas de áudio e duas
+legendas em um arquivo sintético::
+
+    python3 tests/test-tracks.py
+
+Usa saídas nulas por padrão. ``--hardware`` envia imagem pela Intensity em
+1080p50 com áudio silenciado e compara os buffers com cada legenda e sem
+legenda. Verifica troca durante pausa/reprodução e preservação do processo.
+``--app-root /usr/lib/bmdmpv`` permite testar a instalação do pacote.
 
 A ponte é testada com interfaces simuladas geradas a partir dos headers reais:
 FPS fracionário, seleção de modos, dispositivo ausente, inicialização parcial,

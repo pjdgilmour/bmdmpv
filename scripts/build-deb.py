@@ -26,7 +26,7 @@ def copy(src, dst, mode=0o644):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--version', default='0.1.1-1')
+    parser.add_argument('--version', default='0.1.2-1')
     args = parser.parse_args()
     if not re.fullmatch(r'[0-9][A-Za-z0-9.+~]*-[0-9]+', args.version):
         parser.error('Use a Debian version such as 0.1.1-1.')
